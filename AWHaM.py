@@ -1,10 +1,56 @@
 from AGeLib import *
-import sys, os, typing, ast
+import sys, os, platform
+import typing
+import ast
+import json
 
-class ModListItem(AGeWidgets.TightGridWidget):
-    def __init__(self, parent, modData) -> None:
+from PyQt5.QtCore import QEvent
+
+class ModLabel(QtWidgets.QLabel):
+    pass
+
+class ModListItemWidget(AGeWidgets.TightGridWidget):
+    def __init__(self, parent, modListWidget, modData, number, item) -> None:
         super().__init__(parent)
-        self.addWidget(QtWidgets.QLabel(modData["name"]))
+        self.ModListWidget = modListWidget
+        self.Item:QtWidgets.QListWidgetItem = item
+        self.Data = modData
+        self.Number = number
+        self.Name = self.Data["name"]
+        self.Order = self.Data["order"]
+        self.Picture = self.addWidget(ModLabel(),0,1)
+        self.loadPicture()
+        self.NameLabel = self.addWidget(ModLabel(self.Name),0,3)
+        self.ActiveCB = self.addWidget(QtWidgets.QCheckBox(""),0,0)
+        self.ActiveCB.setFixedSize(20,20)
+        self.ActiveCB.setChecked(self.Data["active"])
+        self.setToolTip(self.Data["short"])
+        self.installEventFilter(self)
+    
+    def eventFilter(self, source, event):
+        # type: (QtWidgets.QWidget, QtCore.QEvent|QtGui.QKeyEvent) -> bool
+        if event.type() == QtCore.QEvent.FontChange:
+            self.Picture.setMaximumSize(int(App().font().pointSize()*2),int(App().font().pointSize()*2))
+            #self.setMinimumSize(int(App().font().pointSize()*2),int(App().font().pointSize()*2))
+            self.Item.setSizeHint(self.minimumSizeHint())
+        return super(ModListItemWidget, self).eventFilter(source, event) # let the normal eventFilter handle the event
+    
+    def loadPicture(self):
+        self.Picture.setMaximumSize(int(App().font().pointSize()*2),int(App().font().pointSize()*2))
+        try:
+            pic = QtGui.QPixmap()
+            picPath:str = self.Data["packfile"]
+            if platform.system() == "Linux" : picPath = picPath.lstrip("Z:")
+            picPath = picPath.rstrip(".pack")+".png"
+            if pic.load(picPath):
+                self.Picture.setPixmap(pic)
+                self.Picture.setScaledContents(True)
+        except:
+            NC(2,f"Could Not load Picture for mod '{self.Name}'")
+
+class ModListItem(QtWidgets.QListWidgetItem):
+    def __lt__(self, other):
+        return self.data(101) < other.data(101)
 
 class ModListWidget(AGeWidgets.ListWidget):
     def __init__(self, parent, mainWindow):
@@ -20,22 +66,46 @@ class ModListWidget(AGeWidgets.ListWidget):
         for mod in mod_folders:
             item = QtWidgets.QListWidgetItem(self)
             self.addItem(item)
-            row = ModListItem(mod)
+            row = ModListItemWidget(mod)
             item.setSizeHint(row.minimumSizeHint())
             self.setItemWidget(item, row)
     
     def loadModList(self):
         try:
-            mods = self.MainWindow.parseModFile()
+            mods = self.MainWindow.loadModFile()
+            self.ModData = mods
             self.clear()
+            number = 0
             for mod in mods:
-                item = QtWidgets.QListWidgetItem(self)
+                item = ModListItem(self)
+                item.setData(101, mod["order"])
+                item.setData(102, mod["name"])
                 self.addItem(item)
-                row = ModListItem(self, mod)
+                row = ModListItemWidget(self, self, mod, number, item)
                 item.setSizeHint(row.minimumSizeHint())
                 self.setItemWidget(item, row)
+                number += 1
+            self.sortItems()
         except:
-            NC(1,"Could not load mod list", exc=True)
+            NC(1, "Could not load mod list", exc=True)
+    
+    def itemWidget(self, *args, **kwargs) -> ModListItemWidget:
+        return super().itemWidget(*args, **kwargs)
+    
+    def applyMods(self):
+        print("Mods:")
+        for c in range(self.count()):
+            i = self.item(c)
+            #print(i.data(102))
+            w = self.itemWidget(i)
+            d = self.ModData[w.Number]
+            if not d["name"] == w.Name:
+                name = d["name"]
+                raise Exception(f"Mod order mismatch. Can not proceed safely. Num: {w.Number}, expected name '{name}' but got '{w.Name}'")
+            self.ModData[w.Number]["order"] = c+1
+            self.ModData[w.Number]["active"] = w.ActiveCB.isChecked()
+            print(c+1,w.ActiveCB.isChecked(),w.Name)
+        print()
 
 class AWHaMWindow(AWWF):
     def __init__(self):
@@ -61,12 +131,19 @@ class AWHaMWindow(AWWF):
         self.MenuBar.setVisible(False)
         self.setMenuBar(None)
         
-        # Overload
+        self.ApplyButton = AGeWidgets.Button(self,"Apply and Save",self.applyMods)
+        self.TopBar.layout().addWidget(self.ApplyButton, 0, 1, 1, 1,QtCore.Qt.AlignRight)
+        
+        # ModList
         self.ModListWidget = ModListWidget(self, self)
         self.ModListWidget.setObjectName("ModListWidget")
         self.TabWidget.addTab(self.ModListWidget,"Mod List")
     
-    def setupPaths(self): #TODO: Windows and dynamic selection
+    def applyMods(self):
+        self.ModListWidget.applyMods()
+        self.saveModFile(self.ModListWidget.ModData)
+    
+    def setupPaths(self): #TODO: Add Windows and dynamic selection
         # Temp setup
         self.WHModFileLastUsedLog = os.path.expanduser("~/.steam/steam/steamapps/common/Total War WARHAMMER III/used_mods.txt")
         self.WHModFile = os.path.expanduser("~/.steam/steam/steamapps/compatdata/1142710/pfx/drive_c/users/steamuser/AppData/Roaming/The Creative Assembly/Launcher")
@@ -79,13 +156,21 @@ class AWHaMWindow(AWWF):
         print(self.WHModFile)
         self.WHModFolder = os.path.expanduser("~/.steam/steam/steamapps/workshop/content/1142710/")
     
-    def parseModFile(self):
+    def loadModFile(self):
         with open(self.WHModFile) as file:
-            data = file.read()
-        data = data.replace("false", "False")
-        data = data.replace("true", "True")
-        data = ast.literal_eval(data)
+            #data = file.read()
+            data = json.load(file)
+        #data = data.replace(":false", ":False")
+        #data = data.replace(":true", ":True")
+        #data = data.replace(": false", ": False")
+        #data = data.replace(": true", ": True")
+        #data = ast.literal_eval(data)
         return data
+    
+    def saveModFile(self, data):
+        dataStr = json.dumps(data)
+        with open(self.WHModFile,"w") as file:
+            file.write(dataStr)
 
 if __name__ == "__main__":
     AGeQuick.QuickSetup(AWHaMWindow, "Astus' TW:WH3 Mod Manager")
