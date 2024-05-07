@@ -1,7 +1,7 @@
 from AGeLib import *
 import sys, os, platform
 import typing
-import ast
+#import ast
 import json
 
 from PyQt5.QtCore import QEvent
@@ -75,8 +75,7 @@ class ModListWidget(AGeWidgets.ListWidget):
             mods = self.MainWindow.loadModFile()
             self.ModData = mods
             self.clear()
-            number = 0
-            for mod in mods:
+            for number, mod in enumerate(mods):
                 item = ModListItem(self)
                 item.setData(101, mod["order"])
                 item.setData(102, mod["name"])
@@ -84,7 +83,6 @@ class ModListWidget(AGeWidgets.ListWidget):
                 row = ModListItemWidget(self, self, mod, number, item)
                 item.setSizeHint(row.minimumSizeHint())
                 self.setItemWidget(item, row)
-                number += 1
             self.sortItems()
         except:
             NC(1, "Could not load mod list", exc=True)
@@ -92,13 +90,16 @@ class ModListWidget(AGeWidgets.ListWidget):
     def itemWidget(self, *args, **kwargs) -> ModListItemWidget:
         return super().itemWidget(*args, **kwargs)
     
-    def applyMods(self):
-        print("Mods:")
+    def enumItems(self):
         for c in range(self.count()):
             i = self.item(c)
-            #print(i.data(102))
             w = self.itemWidget(i)
             d = self.ModData[w.Number]
+            yield c, i, w, d
+    
+    def applyMods(self):
+        print("Mods:")
+        for c, i, w, d in self.enumItems():
             if not d["name"] == w.Name:
                 name = d["name"]
                 raise Exception(f"Mod order mismatch. Can not proceed safely. Num: {w.Number}, expected name '{name}' but got '{w.Name}'")
@@ -158,8 +159,8 @@ class AWHaMWindow(AWWF):
     
     def loadModFile(self):
         with open(self.WHModFile) as file:
-            #data = file.read()
             data = json.load(file)
+            #data = file.read()
         #data = data.replace(":false", ":False")
         #data = data.replace(":true", ":True")
         #data = data.replace(": false", ": False")
