@@ -38,8 +38,16 @@ class ModListItemWidget(AGeWidgets.TightGridWidget):
         self.OrderInput.installEventFilter(self)
     
     @property
-    def Order(self):
+    def Order(self) -> int:
         return self.OrderInput.value()
+    
+    @property
+    def Active(self) -> bool:
+        return self.ActiveCB.isChecked()
+    
+    @Active.setter
+    def Active(self, state:bool):
+        self.ActiveCB.setChecked(state)
     
     def setOrderButBlockSignal(self, num):
         self.OrderInput.blockSignals(True)
@@ -174,8 +182,31 @@ class ModListWidget(AGeWidgets.ListWidget):
             self.ModData[w.Number]["active"] = w.ActiveCB.isChecked()
             print(c+1,w.ActiveCB.isChecked(),w.Name)
         print()
+    
+    def checkIfModInstalled(self, ID):
+        if ID == "N/A": return False
+        for c, i, w, d in self.enumItems():
+            if w.WorkshopID == ID:
+                return True
+        return False
+    
+    def applyModOrderFromIDs(self, IDs):
+        for _, _, w, _ in self.enumItems():
+            w.setOrderButBlockSignal(w.Order+len(IDs)+10) # +10 unnecessary but better save than sorry
+            w.Active = False
+        for i, ID in enumerate(IDs):
+            for _, _, w, _ in self.enumItems():
+                if w.WorkshopID == ID:
+                    w.setOrderButBlockSignal(i+1)
+                    w.Active = True
+                    break
+            else:
+                NC(3,f"Mod with Steam Workshop ID {ID} was requested but could not be found! This should never happen! The other mods will still be sorted since the process has already started.")
+        self.sortItems()
 
 class AWHaMWindow(AWWF):
+    #TODO: On close ask user if they want to apply mod list
+    #TODO: Only ask user if there are unapplied changes to the mod setup
     def __init__(self):
         super().__init__()
         
@@ -206,9 +237,47 @@ class AWHaMWindow(AWWF):
         self.ModListWidget = self.ModListContainer.addWidget(ModListWidget(self, self), 0,0)
         self.ModListButtonContainer = self.ModListContainer.addWidget(AGeWidgets.TightGridWidget(self,False), 1,0)
         self.ApplyButton = self.ModListButtonContainer.addWidget(AGeWidgets.Button(self,"Apply and Save",self.applyMods), 0,10)
+        self.ShareButton = self.ModListButtonContainer.addWidget(AGeWidgets.Button(self,"Share",self.shareMods), 0,9)
+        self.ShareButton.setToolTip("Copies a list of all active mods to the clipboard.\nPaste this into the chat of your choice so that your friends can copy it!")
+        self.LoadFromClipboardButton = self.ModListButtonContainer.addWidget(AGeWidgets.Button(self,"Load from Clipboard",self.loadModsFromClipboard), 0,8)
         self.TabWidget.addTab(self.ModListContainer,"Mod List")
         
         self.start()
+    
+    def shareMods(self):
+        try:
+            s = "TW:WH3 Mod List:"
+            for c, i, w, d in self.ModListWidget.enumItems():
+                if w.Active:
+                    s += f"\n{w.WorkshopID}: {w.Name}"
+            QtWidgets.QApplication.clipboard().setText(s)
+        except:
+            NC(2,"Could not copy mod list to clipboard",exc=sys.exc_info())
+        else:
+            NC(1,"Mods list is now in your clipboard!\nPaste this into the chat of your choice so that your friends can copy it!",DplStr="Now Paste into Chat!")
+    
+    def loadModsFromClipboard(self):
+        try:
+            s = QtWidgets.QApplication.clipboard().text()
+            if not s.startswith("TW:WH3 Mod List:\n"):
+                NC(2,"The content of the clipboard seems invalid.\nIt should start with \"TW:WH3 Mod List:\"",DplStr="Invalid Clipboard")
+                return
+            mods = s.splitlines()[1:]
+            NotInstalled = []
+            for i in mods:
+                if not self.ModListWidget.checkIfModInstalled(i.split(":")[0]):
+                    NotInstalled.append(i)
+            if NotInstalled:
+                NC(2,"The following mods are not installed, thus the modset can not be applied (Note: mods are searched by Steam Workshop ID):\n"+"\n".join(NotInstalled),DplStr="Mods Missing")
+                return
+            IDs = [i.split(":")[0] for i in mods]
+            self.ModListWidget.applyModOrderFromIDs(IDs)
+            #for c, i, w, d in self.ModListWidget.enumItems():
+            #    if w.Active:
+            #        s += f"\n{w.WorkshopID}: {w.Name}"
+            #QtWidgets.QApplication.clipboard().setText(s)
+        except:
+            NC(2,"Could not apply mods",exc=sys.exc_info())
     
     def start(self):
         self.setupPaths()
@@ -220,8 +289,20 @@ class AWHaMWindow(AWWF):
     
     def setupPaths(self): #TODO: Add Windows support and dynamic selection
         # Temp setup
-        self.WHModFileLastUsedLog = os.path.expanduser("~/.steam/steam/steamapps/common/Total War WARHAMMER III/used_mods.txt")
-        self.WHModFile = os.path.expanduser("~/.steam/steam/steamapps/compatdata/1142710/pfx/drive_c/users/steamuser/AppData/Roaming/The Creative Assembly/Launcher")
+        #self.WHModFileLastUsedLog = os.path.expanduser("~/.steam/steam/steamapps/common/Total War WARHAMMER III/used_mods.txt")
+        if platform.system() == "Linux":
+            self.WHModFile = os.path.expanduser("~/.steam/steam/steamapps/compatdata/1142710/pfx/drive_c/users/steamuser/AppData/Roaming/The Creative Assembly/Launcher")
+        else:
+            self.WHModFile = os.path.expanduser(r"~\AppData\Roaming\The Creative Assembly\Launcher")
+        if not os.path.isdir(self.WHModFile):
+            msgBox = QtWidgets.QMessageBox(self)
+            msgBox.setText("Please Locate Path")
+            msgBox.setInformativeText(  "The mod info file is not in the usual location.\nPlease locate it yourself.\nIt should normally be in\nUSERNAME\\AppData\\Roaming\\The Creative Assembly\\Launcher\n"\
+                                        "Please only select the folder \"Launcher\"\nA file dialogue will open once you click ok.\n"\
+                                        "Currently the selected path will not be saved for the next session. Sorry for the inconvenience. I will get around to save the selected location eventually...") #TODO: Save selected path!
+            msgBox.setStandardButtons(QtWidgets.QMessageBox.Ok)
+            msgBox.exec()
+            self.WHModFile = QtWidgets.QFileDialog.getExistingDirectory(self,"Please Locate Directory \"The Creative Assembly\\Launcher\"")
         folders:typing.List[str] = [name for name in os.listdir(self.WHModFile) if os.path.isfile(os.path.join(self.WHModFile, name))]
         print(folders)
         for i in folders:
