@@ -1,8 +1,8 @@
 from AGeLib import *
 import sys, os, platform
 import typing
-#import ast
 import json
+import re
 
 from PyQt5.QtCore import QEvent
 
@@ -12,28 +12,85 @@ class ModLabel(QtWidgets.QLabel):
 class ModListItemWidget(AGeWidgets.TightGridWidget):
     def __init__(self, parent, modListWidget, modData, number, item) -> None:
         super().__init__(parent)
-        self.ModListWidget = modListWidget
+        self.ModListWidget:"ModListWidget" = modListWidget
         self.Item:QtWidgets.QListWidgetItem = item
         self.Data = modData
         self.Number = number
         self.Name = self.Data["name"]
-        self.Order = self.Data["order"]
-        self.Picture = self.addWidget(ModLabel(),0,1)
+        self.Order_initial = self.Data["order"]
+        self.OrderInput = self.addWidget(QtWidgets.QSpinBox(self),0,0)
+        self.OrderInput.setMinimum(0)
+        self.OrderInput.setMaximum(9999)
+        self.OrderInput.setValue(self.Order_initial)
+        self.OrderInput.wheelEvent = lambda event: None
+        self.OrderInput.setFixedWidth(int(App().font().pointSize()*6))
+        #self.OrderInput.valueChanged.connect(lambda pos: self.reorder(pos))
+        self.Picture = self.addWidget(ModLabel(),0,2)
         self.loadPicture()
         self.NameLabel = self.addWidget(ModLabel(self.Name),0,3)
-        self.ActiveCB = self.addWidget(QtWidgets.QCheckBox(""),0,0)
+        self.ActiveCB = self.addWidget(QtWidgets.QCheckBox(""),0,1)
         self.ActiveCB.setFixedSize(20,20)
         self.ActiveCB.setChecked(self.Data["active"])
         self.setToolTip(self.Data["short"])
+        self.initWorkshopID()
+        #self.IDLabel = self.addWidget(ModLabel(self.WorkshopID),0,4)
         self.installEventFilter(self)
+        self.OrderInput.installEventFilter(self)
+    
+    @property
+    def Order(self):
+        return self.OrderInput.value()
+    
+    def setOrderButBlockSignal(self, num):
+        self.OrderInput.blockSignals(True)
+        self.OrderInput.setValue(num)
+        self.OrderInput.blockSignals(False)
     
     def eventFilter(self, source, event):
         # type: (QtWidgets.QWidget, QtCore.QEvent|QtGui.QKeyEvent) -> bool
-        if event.type() == QtCore.QEvent.FontChange:
-            self.Picture.setMaximumSize(int(App().font().pointSize()*2),int(App().font().pointSize()*2))
-            #self.setMinimumSize(int(App().font().pointSize()*2),int(App().font().pointSize()*2))
-            self.Item.setSizeHint(self.minimumSizeHint())
+        if source is self:
+            if event.type() == QtCore.QEvent.FontChange:
+                self.Picture.setMaximumSize(int(App().font().pointSize()*2),int(App().font().pointSize()*2))
+                #self.setMinimumSize(int(App().font().pointSize()*2),int(App().font().pointSize()*2))
+                self.OrderInput.setFixedWidth(int(App().font().pointSize()*6))
+                self.Item.setSizeHint(self.minimumSizeHint())
+        elif source is self.OrderInput:
+            if event.type() == QtCore.QEvent.FocusOut:
+                self.reorder(self.OrderInput.value())
+            if event.type() == QtCore.QEvent.KeyPress:
+                if event.key() == QtCore.Qt.Key_Return or event.key() == QtCore.Qt.Key_Enter:
+                    self.reorder(self.OrderInput.value())
         return super(ModListItemWidget, self).eventFilter(source, event) # let the normal eventFilter handle the event
+    
+    def reorder(self, position):
+        if position == 0: position = 1
+        # There is no way to move an item without destroying its widget
+        # except for drag and drop which I don't want to automate for this task
+        # or resorting the entire list which I don't want to do
+        # so I would need to generate a new widget which looks like this:
+        """
+        self.ModListWidget.takeItem(self.ModListWidget.row(self.Item))
+        self.ModListWidget.insertItem(position-1, self.Item)
+        newWidget = ModListItemWidget(self.ModListWidget, self.ModListWidget, self.Data, self.Number, self.Item)
+        self.ModListWidget.setItemWidget(self.Item, newWidget)
+        self.ModListWidget.refreshOrderDisplays()
+        self.ModListWidget.setCurrentItem(self.Item)
+        """
+        # I should probably use a QListView instead a QListWidget but I am too stubborn...
+        # So instead I will use the sort trick
+        self.setOrderButBlockSignal(0)
+        self.ModListWidget.prepareInsert(position)
+        self.setOrderButBlockSignal(position)
+        self.ModListWidget.sortItems()
+        self.ModListWidget.refreshOrderDisplays()
+        
+    
+    def initWorkshopID(self):
+        try:
+            self.WorkshopID = re.split("/1142710/", self.Data["packfile"])[1]
+            self.WorkshopID = re.split("/", self.WorkshopID)[0]
+        except:
+            self.WorkshopID = "N/A"
     
     def loadPicture(self):
         self.Picture.setMaximumSize(int(App().font().pointSize()*2),int(App().font().pointSize()*2))
@@ -50,7 +107,7 @@ class ModListItemWidget(AGeWidgets.TightGridWidget):
 
 class ModListItem(QtWidgets.QListWidgetItem):
     def __lt__(self, other):
-        return self.data(101) < other.data(101)
+        return self.data(103).Order < other.data(103).Order
 
 class ModListWidget(AGeWidgets.ListWidget):
     def __init__(self, parent, mainWindow):
@@ -58,6 +115,16 @@ class ModListWidget(AGeWidgets.ListWidget):
         self.MainWindow = mainWindow
         super().__init__(parent)
         self.setDragDropMode(AGeWidgets.ListWidget.DragDropMode.InternalMove)
+        self.model().rowsMoved.connect(lambda: self.refreshOrderDisplays())
+    
+    def refreshOrderDisplays(self):
+        for c, i, w, d in self.enumItems():
+            w.setOrderButBlockSignal(c+1)
+    
+    def prepareInsert(self, pos):
+        for c, i, w, d in self.enumItems():
+            if w.Order >= pos:
+                w.setOrderButBlockSignal(w.Order+1)
     
     def loadModListFromWorkshopFolder(self):
         mod_folders = [name for name in os.listdir(self.MainWindow.WHModFolder) if os.path.isdir(os.path.join(self.MainWindow.WHModFolder, name))]
@@ -79,9 +146,10 @@ class ModListWidget(AGeWidgets.ListWidget):
                 item.setData(101, mod["order"])
                 item.setData(102, mod["name"])
                 self.addItem(item)
-                row = ModListItemWidget(self, self, mod, number, item)
-                item.setSizeHint(row.minimumSizeHint())
-                self.setItemWidget(item, row)
+                widget = ModListItemWidget(self, self, mod, number, item)
+                item.setData(103, widget)
+                item.setSizeHint(widget.minimumSizeHint())
+                self.setItemWidget(item, widget)
             self.sortItems()
         except:
             NC(1, "Could not load mod list", exc=True)
