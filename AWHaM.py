@@ -57,7 +57,6 @@ class ModListWidget(AGeWidgets.ListWidget):
         #type: (AWHaMWindow,AWHaMWindow) -> None
         self.MainWindow = mainWindow
         super().__init__(parent)
-        self.loadModList()
         self.setDragDropMode(AGeWidgets.ListWidget.DragDropMode.InternalMove)
     
     def loadModListFromWorkshopFolder(self):
@@ -112,8 +111,6 @@ class AWHaMWindow(AWWF):
     def __init__(self):
         super().__init__()
         
-        self.setupPaths()
-        
         # UI
         self.TopBar.init(IncludeFontSpinBox=True,IncludeErrorButton=True,IncludeAdvancedCB=True)
         self.setWindowTitle("Astus' TW:WH3 Mod Manager")
@@ -132,19 +129,28 @@ class AWHaMWindow(AWWF):
         self.MenuBar.setVisible(False)
         self.setMenuBar(None)
         
-        self.ApplyButton = AGeWidgets.Button(self,"Apply and Save",self.applyMods)
-        self.TopBar.layout().addWidget(self.ApplyButton, 0, 1, 1, 1,QtCore.Qt.AlignRight)
+        #self.ApplyButton = AGeWidgets.Button(self,"Apply and Save",self.applyMods)
+        #self.TopBar.layout().addWidget(self.ApplyButton, 0, 1, 1, 1,QtCore.Qt.AlignRight)
         
         # ModList
-        self.ModListWidget = ModListWidget(self, self)
-        self.ModListWidget.setObjectName("ModListWidget")
-        self.TabWidget.addTab(self.ModListWidget,"Mod List")
+        self.ModListContainer = AGeWidgets.TightGridWidget(self,False)
+        self.ModListContainer.layout().setSpacing(0)
+        self.ModListWidget = self.ModListContainer.addWidget(ModListWidget(self, self), 0,0)
+        self.ModListButtonContainer = self.ModListContainer.addWidget(AGeWidgets.TightGridWidget(self,False), 1,0)
+        self.ApplyButton = self.ModListButtonContainer.addWidget(AGeWidgets.Button(self,"Apply and Save",self.applyMods), 0,10)
+        self.TabWidget.addTab(self.ModListContainer,"Mod List")
+        
+        self.start()
+    
+    def start(self):
+        self.setupPaths()
+        self.ModListWidget.loadModList()
     
     def applyMods(self):
         self.ModListWidget.applyMods()
         self.saveModFile(self.ModListWidget.ModData)
     
-    def setupPaths(self): #TODO: Add Windows and dynamic selection
+    def setupPaths(self): #TODO: Add Windows support and dynamic selection
         # Temp setup
         self.WHModFileLastUsedLog = os.path.expanduser("~/.steam/steam/steamapps/common/Total War WARHAMMER III/used_mods.txt")
         self.WHModFile = os.path.expanduser("~/.steam/steam/steamapps/compatdata/1142710/pfx/drive_c/users/steamuser/AppData/Roaming/The Creative Assembly/Launcher")
@@ -160,12 +166,6 @@ class AWHaMWindow(AWWF):
     def loadModFile(self):
         with open(self.WHModFile) as file:
             data = json.load(file)
-            #data = file.read()
-        #data = data.replace(":false", ":False")
-        #data = data.replace(":true", ":True")
-        #data = data.replace(": false", ": False")
-        #data = data.replace(": true", ": True")
-        #data = ast.literal_eval(data)
         return data
     
     def saveModFile(self, data):
