@@ -131,6 +131,7 @@ class ModListWidget(AGeWidgets.ListWidget):
         super().__init__(parent)
         self.setDragDropMode(AGeWidgets.ListWidget.DragDropMode.InternalMove)
         self.model().rowsMoved.connect(lambda: self.refreshOrderDisplays())
+        self.setAutoScrollMargin(32)
     
     def refreshOrderDisplays(self):
         for c, i, w, d in self.enumItems():
