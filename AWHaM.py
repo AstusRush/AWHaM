@@ -34,11 +34,15 @@ class ModListItemWidget(AGeWidgets.TightGridWidget):
         self.ActiveCB = self.addWidget(QtWidgets.QCheckBox(""),0,1)
         self.ActiveCB.setFixedSize(20,20)
         self.ActiveCB.setChecked(self.Data["active"])
+        self.ActiveCB.stateChanged.connect(lambda _:self.setModified())
         self.setToolTip(self.Data["short"])
         self.initWorkshopID()
         #self.IDLabel = self.addWidget(ModLabel(self.WorkshopID),0,4)
         self.installEventFilter(self)
         self.OrderInput.installEventFilter(self)
+    
+    def setModified(self):
+        self.ModListWidget.IsModified = True
     
     @property
     def Order(self) -> int:
@@ -132,10 +136,12 @@ class ModListWidget(AGeWidgets.ListWidget):
         self.setDragDropMode(AGeWidgets.ListWidget.DragDropMode.InternalMove)
         self.model().rowsMoved.connect(lambda: self.refreshOrderDisplays())
         self.setAutoScrollMargin(32)
+        self.IsModified = False
     
     def refreshOrderDisplays(self):
         for c, i, w, d in self.enumItems():
             w.setOrderButBlockSignal(c+1)
+        self.IsModified = True
     
     def prepareInsert(self, pos):
         for c, i, w, d in self.enumItems():
@@ -262,6 +268,21 @@ class AWHaMWindow(AWWF):
         
         self.start()
     
+    def close(self) -> bool:
+        #NOTE: This only works when using the window's red x to close it; alt+F4 and similar methods will not trigger this method
+        if self.ModListWidget.IsModified:
+            msgBox = QtWidgets.QMessageBox(self)
+            msgBox.setText("Unsaved Changes")
+            msgBox.setInformativeText("There seem to be unapplied changes.\nDo you want to apply those changes or discard them?")
+            msgBox.setStandardButtons(QtWidgets.QMessageBox.Apply | QtWidgets.QMessageBox.Discard | QtWidgets.QMessageBox.Cancel)
+            msgBox.setDefaultButton(QtWidgets.QMessageBox.Apply)
+            option = msgBox.exec()
+            if option == QtWidgets.QMessageBox.Apply:
+                self.applyMods()
+            elif option == QtWidgets.QMessageBox.Cancel:
+                return False
+        return super().close()
+    
     def start(self):
         self.setupPaths()
         self.ModListWidget.loadModList()
@@ -355,6 +376,7 @@ class AWHaMWindow(AWWF):
     def applyMods(self):
         self.ModListWidget.applyMods()
         self.saveModFile(self.ModListWidget.ModData)
+        self.ModListWidget.IsModified = False
     
     def setupPaths(self):
         self.AWHaMPath = os.path.join(App().AGeLibPath,"AWHaM")
