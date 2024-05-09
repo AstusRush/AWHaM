@@ -44,6 +44,9 @@ class ModListItemWidget(AGeWidgets.TightGridWidget):
     def setModified(self):
         self.ModListWidget.IsModified = True
     
+    def toggleActive(self):
+        self.Active = not self.Active
+    
     @property
     def Order(self) -> int:
         return self.OrderInput.value()
@@ -137,6 +140,7 @@ class ModListWidget(AGeWidgets.ListWidget):
         self.model().rowsMoved.connect(lambda: self.refreshOrderDisplays())
         self.setAutoScrollMargin(32)
         self.IsModified = False
+        self.itemDoubleClicked.connect(lambda i: i.data(103).toggleActive())
     
     def refreshOrderDisplays(self):
         for c, i, w, d in self.enumItems():
