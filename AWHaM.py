@@ -321,7 +321,7 @@ class AWHaMWindow(AWWF):
                 modSetData = "TW:WH3 Mod List:"
                 for c, i, w, d in self.ModListWidget.enumItems():
                     modSetData += f"\n{w.WorkshopID}:{w.ActiveStr}: {w.Name}"
-                with open(os.path.join(self.ModSetStoragePath, name+".AWHaMSet"),"w") as file:
+                with open(os.path.join(self.ModSetStoragePath, name+".AWHaMSet"),"w",encoding="utf-8") as file:
                     file.write(modSetData)
             except:
                 NC(1,"Could not save modset!",exc=True)
@@ -329,7 +329,7 @@ class AWHaMWindow(AWWF):
                 self.loadModSetList(name)
         else:
             try:
-                with open(os.path.join(self.ModSetStoragePath, text+".AWHaMSet"),"r") as file:
+                with open(os.path.join(self.ModSetStoragePath, text+".AWHaMSet"),"r",encoding="utf-8") as file:
                     self.loadMods(file.read(), skipMissing=False, skipNoID=True)
             except:
                 NC(1,"Could not load modset!",exc=True)
@@ -412,7 +412,7 @@ class AWHaMWindow(AWWF):
         self.WHModFolder = os.path.expanduser("~/.steam/steam/steamapps/workshop/content/1142710/")
     
     def loadModFile(self):
-        with open(self.WHModFile,encoding="utf-8") as file:
+        with open(self.WHModFile,"r",encoding="utf-8") as file:
             data = json.load(file)
         return data
     
