@@ -412,13 +412,13 @@ class AWHaMWindow(AWWF):
         self.WHModFolder = os.path.expanduser("~/.steam/steam/steamapps/workshop/content/1142710/")
     
     def loadModFile(self):
-        with open(self.WHModFile) as file:
+        with open(self.WHModFile,encoding="utf-8") as file:
             data = json.load(file)
         return data
     
     def saveModFile(self, data):
         dataStr = json.dumps(data)
-        with open(self.WHModFile,"w") as file:
+        with open(self.WHModFile,"w",encoding="utf-8") as file:
             file.write(dataStr)
 
 if __name__ == "__main__":
