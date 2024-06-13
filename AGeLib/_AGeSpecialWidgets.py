@@ -45,7 +45,7 @@ class NotificationsWidget(QtWidgets.QSplitter):
             self.AddNotification(i)
         
         self.NotificationList.currentItemChanged.connect(self.NotificationInfo.ShowNotificationDetails)
-
+    
     def AddNotification(self,Notification):
         # type: (NC) -> None
         try:
@@ -286,12 +286,12 @@ class ColourPicker(QtWidgets.QToolButton): #TODO:OVERHAUL
     
     def eventFilter(self, source, event):
         if event.type() == QtCore.QEvent.MouseButtonPress:
-            if event.button() == QtCore.Qt.RightButton:
-                if event.modifiers() == QtCore.Qt.ControlModifier:
+            if event.modifiers() == QtCore.Qt.ShiftModifier: # Shortcuts like in Factorio
+                if event.button() == QtCore.Qt.LeftButton:
                     self.Brush = QtGui.QBrush(App()._LastCopiedBrush)
                     self.Colour = self.Brush.color()
                     self.ColourSelf()
-                else:
+                elif event.button() == QtCore.Qt.RightButton:
                     App()._LastCopiedBrush = self.Brush
         return super(ColourPicker, self).eventFilter(source, event)
     
@@ -713,10 +713,10 @@ class OptionsWidget_1_Appearance(QtWidgets.QWidget): #CRITICAL: Conform to namin
         #    self.LexerColours.append(widget)
         #    self.LexerTable.setCellWidget(y,0,widget)
         #    y+=1
-        
+    
     def SetFontFamily(self,Family):
         App().setFont(Family,self.window().TopBar.Font_Size_spinBox.value(),self)
-        
+    
     def LoadCurrentPalette(self):
         """
         Loads the currently active Theme into the Editor. \n
